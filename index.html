@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+</head>
+<body>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .container { max-width: 1300px; margin: 0 auto; }
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, #38bdf8, #818cf8, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 6px;
+  }
+  header p { color: #94a3b8; font-size: 0.95rem; }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+  .badge-sim { background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); }
+  .badge-real { background: rgba(74,222,128,0.15); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
+  .badge-loading { background: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); }
+  .badge-readonly {
+    background: rgba(129,140,248,0.15); color: #a5b4fc; border: 1px solid rgba(129,140,248,0.3);
+    margin-left: 8px;
+  }
+  .panel {
+    background: rgba(30,41,59,0.6);
+    border: 1px solid rgba(148,163,184,0.15);
+    border-radius: 16px;
+    padding: 20px 22px;
+    margin-bottom: 22px;
+    backdrop-filter: blur(6px);
+  }
+  .panel h2 {
+    font-size: 1.05rem;
+    margin-bottom: 14px;
+    color: #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+  }
+  .stat-card {
+    background: rgba(15,23,42,0.55);
+    border-radius: 12px;
+    padding: 16px;
+    border-left: 4px solid var(--accent, #38bdf8);
+  }
+  .stat-card .label { font-size: 0.75rem; color: #94a3b8; margin-bottom: 6px; }
+  .stat-card .value { font-size: 1.5rem; font-weight: 700; color: #f1f5f9; }
+  .stat-card .sub { font-size: 0.72rem; color: #64748b; margin-top: 4px; }
+  .chart-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .toggle-chip {
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: rgba(148,163,184,0.12);
+    color: #94a3b8;
+    border: 1px solid rgba(148,163,184,0.2);
+  }
+  .toggle-chip.active {
+    background: rgba(56,189,248,0.2);
+    color: #38bdf8;
+    border-color: rgba(56,189,248,0.4);
+  }
+  .chart-wrap {
+    position: relative;
+    height: 420px;
+  }
+  .footer-note {
+    font-size: 0.78rem;
+    color: #64748b;
+    text-align: center;
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #94a3b8;
+  }
+  .empty-state .big { font-size: 2rem; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
+  th, td { padding: 8px 10px; text-align: right; }
+  th { color: #94a3b8; font-weight: 600; border-bottom: 1px solid rgba(148,163,184,0.2); }
+  td:first-child, th:first-child { text-align: left; }
+  tbody tr:nth-child(odd) { background: rgba(148,163,184,0.05); }
+</style>
+<div class="container">
+  <header>
+    <h1>⚡ Arreglo de Detectores Cherenkov — Análisis de Carga</h1>
+    <p>Histogramas integrados de eventos vs. carga (p.e.) · Detectores 1, 2, 3 y Sistema Total</p>
+    <div id="modeBadge" style="margin-top:10px;">
+      <span class="badge badge-loading">● Cargando datos…</span>
+      <span class="badge badge-readonly">👁️ Solo lectura</span>
+    </div>
+  </header>
+
+  <div class="panel" id="mainPanel" style="display:none;">
+    <div style="margin-bottom: 22px;">
+      <h2>📊 Resumen — Partículas Detectadas (carga ≥ 0)</h2>
+      <div class="stats-grid" id="statsGrid"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="chartPanel" style="display:none;">
+    <h2>📈 Histogramas Integrados de Carga</h2>
+    <div class="chart-controls">
+      <div class="toggle-chip active" id="chip-linear" onclick="setScale('linear')">Escala Lineal</div>
+      <div class="toggle-chip" id="chip-log" onclick="setScale('logarithmic')">Escala Logarítmica</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="mainChart"></canvas>
+    </div>
+  </div>
+
+  <div class="panel" id="tablePanel" style="display:none;">
+    <h2>📋 Tabla Comparativa</h2>
+    <table id="summaryTable">
+      <thead>
+        <tr><th>Detector</th><th>N detectado</th><th>Carga máxima (p.e.)</th><th># bins</th><th>% del total</th></tr>
+      </thead>
+      <tbody id="summaryBody"></tbody>
+    </table>
+  </div>
+
+  <div class="panel" id="emptyPanel" style="display:none;">
+    <div class="empty-state">
+      <div class="big">📭</div>
+      <p>Todavía no hay datos publicados para mostrar.</p>
+    </div>
+  </div>
+
+  <p class="footer-note" id="refreshNote">Esta vista es de solo lectura y se actualiza automáticamente.</p>
+</div>
+<script>
+const REFRESH_MS = 30000; // revisa cada 30s si hay datos nuevos
+let currentScale = 'linear';
+let chart = null;
+let dataStore = { det1:null, det2:null, det3:null, total:null };
+let dataSource = { det1:'sim', det2:'sim', det3:'sim', total:'sim' };
+
+async function loadStoredData(){
+  try{
+    // Cache-busting para que GitHub Pages no sirva una copia vieja de data.json
+    const resp = await fetch('./data.json?t=' + Date.now());
+    if(!resp.ok) throw new Error('data.json no encontrado (status ' + resp.status + ')');
+    const parsed = await resp.json();
+    if(parsed && parsed.dataStore){
+      dataStore = parsed.dataStore;
+      dataSource = parsed.dataSource || dataSource;
+      return true;
+    }
+  }catch(err){
+    console.log('Aún no hay datos publicados:', err);
+  }
+  return false;
+}
+
+function updateBadge(){
+  const anyReal = Object.values(dataSource).some(s=>s==='real');
+  const allReal = Object.values(dataSource).every(s=>s==='real');
+  const badgeEl = document.getElementById('modeBadge');
+  let sourceBadge;
+  if(allReal){
+    sourceBadge = '<span class="badge badge-real">● DATOS REALES</span>';
+  } else if(anyReal){
+    sourceBadge = '<span class="badge badge-real">● MIXTO (real + simulado)</span>';
+  } else {
+    sourceBadge = '<span class="badge badge-sim">● DATOS SIMULADOS (DEMO)</span>';
+  }
+  badgeEl.innerHTML = sourceBadge + '<span class="badge badge-readonly">👁️ Solo lectura</span>';
+}
+
+function setScale(scale){
+  currentScale = scale;
+  document.getElementById('chip-linear').classList.toggle('active', scale==='linear');
+  document.getElementById('chip-log').classList.toggle('active', scale==='logarithmic');
+  renderChart();
+}
+
+function renderStats(){
+  const grid = document.getElementById('statsGrid');
+  const colors = {det1:'#f87171', det2:'#4ade80', det3:'#60a5fa', total:'#f1f5f9'};
+  const labels = {det1:'Detector 1', det2:'Detector 2', det3:'Detector 3', total:'Sistema Total'};
+  let html = '';
+  for(const k of ['det1','det2','det3','total']){
+    const d = dataStore[k];
+    const n = d ? d.counts[0] : 0;
+    html += `
+      <div class="stat-card" style="--accent:${colors[k]}">
+        <div class="label">${labels[k]} ${dataSource[k]==='real' ? '🟢' : '🔵'}</div>
+        <div class="value">${n.toLocaleString()}</div>
+        <div class="sub">partículas detectadas (Q≥0)</div>
+      </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+function renderTable(){
+  const body = document.getElementById('summaryBody');
+  const labels = {det1:'Detector 1', det2:'Detector 2', det3:'Detector 3', total:'Sistema Total'};
+  const total_n = dataStore.total ? dataStore.total.counts[0] : 1;
+  let html = '';
+  for(const k of ['det1','det2','det3','total']){
+    const d = dataStore[k];
+    if(!d) continue;
+    const n = d.counts[0];
+    const maxCharge = Math.max(...d.charge);
+    const pct = (100*n/total_n).toFixed(2);
+    html += `<tr>
+      <td>${labels[k]} ${dataSource[k]==='real' ? '<span class="badge badge-real">real</span>' : '<span class="badge badge-sim">sim</span>'}</td>
+      <td>${n.toLocaleString()}</td>
+      <td>${maxCharge.toLocaleString()}</td>
+      <td>${d.counts.length}</td>
+      <td>${pct}%</td>
+    </tr>`;
+  }
+  body.innerHTML = html;
+}
+
+function renderChart(){
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  const colors = {det1:'#f87171', det2:'#4ade80', det3:'#60a5fa', total:'#f1f5f9'};
+  const labels = {det1:'Detector 1', det2:'Detector 2', det3:'Detector 3', total:'Sistema Total'};
+  const datasets = ['det1','det2','det3','total'].filter(k=>dataStore[k]).map(k=>{
+    const d = dataStore[k];
+    return {
+      label: labels[k],
+      data: d.charge.map((c,i)=>({x:c, y:d.counts[i]})),
+      borderColor: colors[k],
+      backgroundColor: colors[k]+'22',
+      borderWidth: k==='total' ? 3 : 2,
+      pointRadius: 0,
+      stepped: 'before',
+      fill: false,
+      tension: 0
+    };
+  });
+  if(chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#cbd5e1', font: {size: 12} } },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()} eventos (Q≥${ctx.parsed.x} p.e.)`
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Carga (p.e.)', color: '#94a3b8' },
+          ticks: { color: '#94a3b8' },
+          grid: { color: 'rgba(148,163,184,0.1)' }
+        },
+        y: {
+          type: currentScale,
+          title: { display: true, text: 'Eventos Integrados', color: '#94a3b8' },
+          ticks: { color: '#94a3b8' },
+          grid: { color: 'rgba(148,163,184,0.1)' }
+        }
+      }
+    }
+  });
+}
+
+function renderAll(){
+  renderStats();
+  renderTable();
+  renderChart();
+}
+
+function showData(){
+  document.getElementById('mainPanel').style.display = 'block';
+  document.getElementById('chartPanel').style.display = 'block';
+  document.getElementById('tablePanel').style.display = 'block';
+  document.getElementById('emptyPanel').style.display = 'none';
+  renderAll();
+}
+
+function showEmpty(){
+  document.getElementById('mainPanel').style.display = 'none';
+  document.getElementById('chartPanel').style.display = 'none';
+  document.getElementById('tablePanel').style.display = 'none';
+  document.getElementById('emptyPanel').style.display = 'block';
+}
+
+async function refresh(){
+  const found = await loadStoredData();
+  updateBadge();
+  if(found){
+    showData();
+  } else {
+    showEmpty();
+  }
+}
+
+async function init(){
+  await refresh();
+  // Revisa periódicamente por si el administrador publica datos nuevos
+  setInterval(refresh, REFRESH_MS);
+}
+
+init();
+</script>
+</body>
+</html>
