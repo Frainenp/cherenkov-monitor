@@ -230,7 +230,10 @@
         </div>
       </div>
       <p class="footer-note">Formato esperado: 2 columnas por línea → <b>conteo_acumulado&nbsp;&nbsp;carga(p.e.)</b>, separadas por espacios o tabs (igual que tus archivos CORSIKA/Geant4).</p>
-      <p class="share-note">🌐 <b>Cómo publicar:</b> al cargar un archivo se descarga automáticamente un <b>data.json</b> actualizado. Reemplaza el <code>data.json</code> de tu repositorio con ese archivo y haz <code>git add data.json && git commit -m "actualizar datos" && git push</code> para que el público lo vea en <b>index.html</b>. Solo tú tienes acceso de escritura al repo, así que solo tú puedes publicar cambios.</p>
+      <p class="share-note">🌐 <b>Cómo publicar:</b> carga todos los detectores que necesites (no descarga nada todavía). Cuando termines, presiona <b>"📤 Publicar Cambios"</b> — ahí se descarga un único <b>data.json</b> con todo combinado. Reemplaza el <code>data.json</code> de tu repositorio con ese archivo y haz <code>git add data.json && git commit -m "actualizar datos" && git push</code> para que el público lo vea en <b>index.html</b>. Solo tú tienes acceso de escritura al repo, así que solo tú puedes publicar cambios.</p>
+    </div>
+    <div class="mode-row" style="margin-top:14px;">
+      <button class="btn-primary" onclick="publicarCambios()">📤 Publicar Cambios (descargar data.json)</button>
     </div>
   </div>
   <div class="panel">
@@ -347,7 +350,8 @@ async function loadStoredData(){
 function clearStoredData(){
   if(!checkAuth()) return;
   aplicarSimulados();
-  saveStoredData('⬇️ data.json de demo descargado — súbelo al repo para reemplazar el publicado');
+  const syncEl = document.getElementById('syncMsg');
+  if(syncEl) syncEl.textContent = 'Demo aplicado en la vista. Presiona "📤 Publicar Cambios" cuando estés listo.';
 }
 
 // Lógica interna, sin pedir contraseña ni descargar nada: la usa init()
@@ -366,16 +370,24 @@ function aplicarSimulados(){
   renderAll();
 }
 
-// Función pública para los botones: pide contraseña, regenera el demo,
-// y SÍ descarga el data.json (acción explícita del administrador).
+// Función pública para el botón: pide contraseña, regenera el demo EN
+// MEMORIA. No descarga nada — para eso está "Publicar Cambios".
 function useSimulated(){
   if(!checkAuth()) return;
   aplicarSimulados();
-  saveStoredData();
+  const syncEl = document.getElementById('syncMsg');
+  if(syncEl) syncEl.textContent = 'Demo aplicado en la vista. Presiona "📤 Publicar Cambios" cuando estés listo.';
 }
 
 function regenerateDemo(){
   useSimulated();
+}
+
+// Único punto de descarga: genera el data.json con TODO lo que esté
+// actualmente en memoria (demo y/o detectores reales combinados).
+function publicarCambios(){
+  if(!checkAuth()) return;
+  saveStoredData('⬇️ data.json publicado — súbelo al repo (git add/commit/push) para que el público lo vea');
 }
 
 function toggleUpload(){
@@ -422,7 +434,8 @@ function handleFile(event, key){
       document.getElementById('status-'+key).textContent = `✓ ${parsed.counts.length} bins cargados (N=${parsed.counts[0].toLocaleString()})`;
       updateBadge();
       renderAll();
-      saveStoredData(`⬇️ data.json actualizado con ${key} — súbelo al repo (git add/commit/push) para publicarlo`);
+      const syncEl = document.getElementById('syncMsg');
+      if(syncEl) syncEl.textContent = `${key} actualizado en la vista. Carga los demás y presiona "📤 Publicar Cambios" al terminar.`;
     }catch(err){
       document.getElementById('status-'+key).style.color = '#f87171';
       document.getElementById('status-'+key).textContent = '⚠️ Error al leer el archivo';
@@ -554,7 +567,7 @@ async function init(){
   if(found){
     updateBadge();
     renderAll();
-    document.getElementById('syncMsg').textContent = '✓ Datos compartidos cargados desde el almacenamiento';
+    document.getElementById('syncMsg').textContent = '✓ data.json publicado cargado en la vista';
     // Refleja el estado de las tarjetas de carga si hay datos reales
     ['det1','det2','det3','total'].forEach(k=>{
       const el = document.getElementById('status-'+k);
