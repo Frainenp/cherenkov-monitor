@@ -162,6 +162,55 @@
     position: relative;
     height: 420px;
   }
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .gallery-card {
+    background: rgba(15,23,42,0.55);
+    border: 1px solid rgba(148,163,184,0.15);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .gallery-thumb {
+    height: 150px;
+    background: rgba(0,0,0,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .gallery-thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .gallery-thumb .pdf-icon { font-size: 2.5rem; }
+  .gallery-info {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .gallery-info input[type=text] {
+    background: rgba(148,163,184,0.08);
+    border: 1px solid rgba(148,163,184,0.2);
+    border-radius: 6px;
+    color: #e2e8f0;
+    padding: 5px 8px;
+    font-size: 0.8rem;
+  }
+  .gallery-remove {
+    align-self: flex-start;
+    background: rgba(248,113,113,0.12);
+    color: #f87171;
+    border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .gallery-remove:hover { background: rgba(248,113,113,0.2); }
   .footer-note {
     font-size: 0.78rem;
     color: #64748b;
@@ -230,10 +279,10 @@
         </div>
       </div>
       <p class="footer-note">Formato esperado: 2 columnas por línea → <b>conteo_acumulado&nbsp;&nbsp;carga(p.e.)</b>, separadas por espacios o tabs (igual que tus archivos CORSIKA/Geant4).</p>
-      <p class="share-note">🌐 <b>Cómo publicar:</b> carga todos los detectores que necesites (no descarga nada todavía). Cuando termines, presiona <b>"📤 Publicar Cambios"</b> — ahí se descarga un único <b>data.json</b> con todo combinado. Reemplaza el <code>data.json</code> de tu repositorio con ese archivo y haz <code>git add data.json && git commit -m "actualizar datos" && git push</code> para que el público lo vea en <b>index.html</b>. Solo tú tienes acceso de escritura al repo, así que solo tú puedes publicar cambios.</p>
+      <p class="share-note">🌐 <b>Cómo publicar:</b> carga todos los detectores que necesites (no descarga nada todavía). Cuando termines, presiona <b>"📤 Publicar Datos"</b> — ahí se descarga un único <b>data.json</b> con todo combinado. Reemplaza el <code>data.json</code> de tu repositorio con ese archivo y haz <code>git add data.json && git commit -m "actualizar datos" && git push</code> para que el público lo vea en <b>index.html</b>. Solo tú tienes acceso de escritura al repo, así que solo tú puedes publicar cambios.</p>
     </div>
     <div class="mode-row" style="margin-top:14px;">
-      <button class="btn-primary" onclick="publicarCambios()">📤 Publicar Cambios (descargar data.json)</button>
+      <button class="btn-primary" onclick="publicarDatos()">📤 Publicar Datos (descargar data.json)</button>
     </div>
   </div>
   <div class="panel">
@@ -243,8 +292,7 @@
   <div class="panel">
     <h2>📈 Histogramas Integrados de Carga</h2>
     <div class="chart-controls">
-      <div class="toggle-chip active" id="chip-linear" onclick="setScale('linear')">Escala Lineal</div>
-      <div class="toggle-chip" id="chip-log" onclick="setScale('logarithmic')">Escala Logarítmica</div>
+      <div class="toggle-chip active">📐 Escala Logarítmica</div>
     </div>
     <div class="chart-wrap">
       <canvas id="mainChart"></canvas>
@@ -259,6 +307,21 @@
       <tbody id="summaryBody"></tbody>
     </table>
   </div>
+  <div class="panel">
+    <h2>🖼️ Gráficos Adicionales (imágenes / PDF)</h2>
+    <p class="footer-note" style="margin-bottom:14px;">Sube gráficos que ya tengas como imagen o PDF (por ejemplo, exportados de otro software de análisis). Se agregan a una galería junto con los histogramas.</p>
+    <div class="mode-row">
+      <label class="btn-primary" style="display:inline-block;">
+        ➕ Agregar Gráfico
+        <input type="file" accept=".png,.jpg,.jpeg,.pdf" style="display:none;" onchange="handleExtraChart(event)">
+      </label>
+    </div>
+    <div class="gallery-grid" id="galleryGrid" style="margin-top:16px;"></div>
+    <div class="mode-row" style="margin-top:16px;">
+      <button class="btn-primary" onclick="publicarFiguras()">📤 Publicar Figuras (descargar figuras.json)</button>
+    </div>
+    <p class="share-note">🌐 Al presionar el botón se descarga <b>figuras.json</b>, independiente de <b>data.json</b>. Reemplázalo en tu repositorio y haz <code>git add figuras.json && git commit -m "actualizar figuras" && git push</code>.</p>
+  </div>
   <p class="sync-msg" id="syncMsg"></p>
   <p class="footer-note">
     💡 Flujo de trabajo sugerido: (1) valida la visualización con los datos simulados de ejemplo,
@@ -271,11 +334,12 @@
 // lado del cliente (visible en el código fuente), no seguridad real.
 const ADMIN_PASSWORD = 'cherenkov2026';
 let isAuthenticated = false;
-let currentScale = 'linear';
+const CHART_SCALE = 'logarithmic'; // fijo por decisión del usuario
 let chart = null;
 // Estructura de datos: { det1: {counts:[], charge:[]}, det2:..., det3:..., total:... }
 let dataStore = { det1:null, det2:null, det3:null, total:null };
 let dataSource = { det1:'sim', det2:'sim', det3:'sim', total:'sim' };
+let extraCharts = []; // [{id, name, mime, dataUrl}]
 
 function generarHistogramaSintetico(N0, decayFast, decayTail, nBins, chargeStep){
   // Genera un histograma integrado con caída rápida inicial + cola larga (similar a datos reales)
@@ -306,32 +370,49 @@ function checkAuth(){
   return false;
 }
 
-function saveStoredData(msg){
-  // Ya no hay backend: en vez de guardar en la nube, generamos un
-  // data.json descargable. Debes moverlo tú mismo a la carpeta del
-  // repo y hacer commit + push para publicarlo.
+function descargarJson(obj, filename){
+  const payload = JSON.stringify(obj, null, 2);
+  const blob = new Blob([payload], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function publicarDatos(){
+  // Descarga solo data.json (histogramas de los detectores).
+  if(!checkAuth()) return;
   const syncEl = document.getElementById('syncMsg');
   try{
-    const payload = JSON.stringify({dataStore, dataSource}, null, 2);
-    const blob = new Blob([payload], {type: 'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'data.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    if(syncEl) syncEl.textContent = msg || '⬇️ data.json descargado — muévelo al repo y haz git push para publicarlo';
+    descargarJson({dataStore, dataSource}, 'data.json');
+    if(syncEl) syncEl.textContent = '⬇️ data.json descargado — muévelo al repo y haz git push para publicarlo';
   }catch(err){
     console.error('Error generando data.json:', err);
-    if(syncEl) syncEl.textContent = '⚠️ No se pudo generar el archivo data.json';
+    if(syncEl) syncEl.textContent = '⚠️ No se pudo generar data.json';
+  }
+}
+
+function publicarFiguras(){
+  // Descarga solo figuras.json (galería de imágenes/PDF).
+  if(!checkAuth()) return;
+  const syncEl = document.getElementById('syncMsg');
+  try{
+    descargarJson({extraCharts}, 'figuras.json');
+    if(syncEl) syncEl.textContent = '⬇️ figuras.json descargado — muévelo al repo y haz git push para publicarlo';
+  }catch(err){
+    console.error('Error generando figuras.json:', err);
+    if(syncEl) syncEl.textContent = '⚠️ No se pudo generar figuras.json';
   }
 }
 
 async function loadStoredData(){
-  // Carga el último data.json publicado (si existe) para partir de ahí
-  // en vez de siempre reiniciar con el demo.
+  // Carga data.json y figuras.json de forma independiente: si uno de
+  // los dos no existe todavía, el otro puede seguir cargando bien.
+  let foundData = false;
   try{
     const resp = await fetch('./data.json?t=' + Date.now());
     if(!resp.ok) throw new Error('data.json no encontrado');
@@ -339,19 +420,28 @@ async function loadStoredData(){
     if(parsed && parsed.dataStore){
       dataStore = parsed.dataStore;
       dataSource = parsed.dataSource || dataSource;
-      return true;
+      foundData = true;
     }
   }catch(err){
     console.log('No hay data.json publicado aún, o no se pudo leer:', err);
   }
-  return false;
+  try{
+    const resp = await fetch('./figuras.json?t=' + Date.now());
+    if(resp.ok){
+      const parsed = await resp.json();
+      extraCharts = parsed.extraCharts || [];
+    }
+  }catch(err){
+    console.log('No hay figuras.json publicado aún, o no se pudo leer:', err);
+  }
+  return foundData;
 }
 
 function clearStoredData(){
   if(!checkAuth()) return;
   aplicarSimulados();
   const syncEl = document.getElementById('syncMsg');
-  if(syncEl) syncEl.textContent = 'Demo aplicado en la vista. Presiona "📤 Publicar Cambios" cuando estés listo.';
+  if(syncEl) syncEl.textContent = 'Demo aplicado en la vista. Presiona "📤 Publicar Datos" cuando estés listo.';
 }
 
 // Lógica interna, sin pedir contraseña ni descargar nada: la usa init()
@@ -371,23 +461,16 @@ function aplicarSimulados(){
 }
 
 // Función pública para el botón: pide contraseña, regenera el demo EN
-// MEMORIA. No descarga nada — para eso está "Publicar Cambios".
+// MEMORIA. No descarga nada — para eso está "Publicar Datos".
 function useSimulated(){
   if(!checkAuth()) return;
   aplicarSimulados();
   const syncEl = document.getElementById('syncMsg');
-  if(syncEl) syncEl.textContent = 'Demo aplicado en la vista. Presiona "📤 Publicar Cambios" cuando estés listo.';
+  if(syncEl) syncEl.textContent = 'Demo aplicado en la vista. Presiona "📤 Publicar Datos" cuando estés listo.';
 }
 
 function regenerateDemo(){
   useSimulated();
-}
-
-// Único punto de descarga: genera el data.json con TODO lo que esté
-// actualmente en memoria (demo y/o detectores reales combinados).
-function publicarCambios(){
-  if(!checkAuth()) return;
-  saveStoredData('⬇️ data.json publicado — súbelo al repo (git add/commit/push) para que el público lo vea');
 }
 
 function toggleUpload(){
@@ -435,7 +518,7 @@ function handleFile(event, key){
       updateBadge();
       renderAll();
       const syncEl = document.getElementById('syncMsg');
-      if(syncEl) syncEl.textContent = `${key} actualizado en la vista. Carga los demás y presiona "📤 Publicar Cambios" al terminar.`;
+      if(syncEl) syncEl.textContent = `${key} actualizado en la vista. Carga los demás y presiona "📤 Publicar Datos" al terminar.`;
     }catch(err){
       document.getElementById('status-'+key).style.color = '#f87171';
       document.getElementById('status-'+key).textContent = '⚠️ Error al leer el archivo';
@@ -457,12 +540,6 @@ function updateBadge(){
   }
 }
 
-function setScale(scale){
-  currentScale = scale;
-  document.getElementById('chip-linear').classList.toggle('active', scale==='linear');
-  document.getElementById('chip-log').classList.toggle('active', scale==='logarithmic');
-  renderChart();
-}
 
 function renderStats(){
   const grid = document.getElementById('statsGrid');
@@ -546,7 +623,7 @@ function renderChart(){
           grid: { color: 'rgba(148,163,184,0.1)' }
         },
         y: {
-          type: currentScale,
+          type: CHART_SCALE,
           title: { display: true, text: 'Eventos Integrados', color: '#94a3b8' },
           ticks: { color: '#94a3b8' },
           grid: { color: 'rgba(148,163,184,0.1)' }
@@ -556,10 +633,92 @@ function renderChart(){
   });
 }
 
+function fileToDataUrl(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleExtraChart(event){
+  if(!checkAuth()){
+    event.target.value = '';
+    return;
+  }
+  const file = event.target.files[0];
+  if(!file) return;
+  const validTypes = ['image/png','image/jpeg','application/pdf'];
+  if(!validTypes.includes(file.type)){
+    alert('Formato no soportado. Usa PNG, JPG o PDF.');
+    event.target.value = '';
+    return;
+  }
+  const MAX_MB = 8;
+  if(file.size > MAX_MB * 1024 * 1024){
+    alert(`El archivo pesa más de ${MAX_MB}MB. Recomendado comprimirlo antes de subirlo, ya que se incrusta dentro de data.json.`);
+    event.target.value = '';
+    return;
+  }
+  try{
+    const dataUrl = await fileToDataUrl(file);
+    extraCharts.push({
+      id: 'chart_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      mime: file.type,
+      dataUrl
+    });
+    renderGallery();
+    const syncEl = document.getElementById('syncMsg');
+    if(syncEl) syncEl.textContent = `"${file.name}" agregado a la galería. Presiona "📤 Publicar Figuras" cuando termines.`;
+  }catch(err){
+    console.error('Error leyendo el archivo:', err);
+    alert('No se pudo leer el archivo.');
+  }
+  event.target.value = '';
+}
+
+function removeExtraChart(id){
+  if(!checkAuth()) return;
+  extraCharts = extraCharts.filter(c => c.id !== id);
+  renderGallery();
+  const syncEl = document.getElementById('syncMsg');
+  if(syncEl) syncEl.textContent = 'Gráfico eliminado de la galería. Recuerda presionar "📤 Publicar Figuras".';
+}
+
+function renameExtraChart(id, newName){
+  const item = extraCharts.find(c => c.id === id);
+  if(item) item.name = newName;
+}
+
+function renderGallery(){
+  const grid = document.getElementById('galleryGrid');
+  if(!grid) return;
+  if(extraCharts.length === 0){
+    grid.innerHTML = '<p class="footer-note">Aún no hay gráficos adicionales. Usa el botón "➕ Agregar Gráfico" arriba.</p>';
+    return;
+  }
+  grid.innerHTML = extraCharts.map(c => {
+    const thumb = c.mime === 'application/pdf'
+      ? `<div class="pdf-icon">📄</div>`
+      : `<img src="${c.dataUrl}" alt="${c.name}">`;
+    return `
+      <div class="gallery-card">
+        <div class="gallery-thumb">${thumb}</div>
+        <div class="gallery-info">
+          <input type="text" value="${c.name}" onchange="renameExtraChart('${c.id}', this.value)" placeholder="Nombre del gráfico">
+          <button class="gallery-remove" onclick="removeExtraChart('${c.id}')">🗑️ Quitar</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 function renderAll(){
   renderStats();
   renderTable();
   renderChart();
+  renderGallery();
 }
 
 async function init(){
@@ -567,7 +726,7 @@ async function init(){
   if(found){
     updateBadge();
     renderAll();
-    document.getElementById('syncMsg').textContent = '✓ data.json publicado cargado en la vista';
+    document.getElementById('syncMsg').textContent = '✓ data.json (y figuras.json si existe) cargados en la vista';
     // Refleja el estado de las tarjetas de carga si hay datos reales
     ['det1','det2','det3','total'].forEach(k=>{
       const el = document.getElementById('status-'+k);
