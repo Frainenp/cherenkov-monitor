@@ -137,6 +137,26 @@
   .stat-card .label { font-size: 0.75rem; color: #94a3b8; margin-bottom: 6px; }
   .stat-card .value { font-size: 1.5rem; font-weight: 700; color: #f1f5f9; }
   .stat-card .sub { font-size: 0.72rem; color: #64748b; margin-top: 4px; }
+  .exp-card {
+    background: rgba(15,23,42,0.55);
+    border-radius: 12px;
+    padding: 14px;
+    border-left: 4px solid #a78bfa;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .exp-card input[type=text] {
+    background: rgba(148,163,184,0.08);
+    border: 1px solid rgba(148,163,184,0.2);
+    border-radius: 6px;
+    color: #e2e8f0;
+    padding: 5px 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .exp-card .value { font-size: 1.3rem; font-weight: 700; color: #f1f5f9; }
+  .exp-card .sub { font-size: 0.72rem; color: #64748b; }
   .chart-controls {
     display: flex;
     gap: 10px;
@@ -322,6 +342,30 @@
     </div>
     <p class="share-note">🌐 Al presionar el botón se descarga <b>figuras.json</b>, independiente de <b>data.json</b>. Reemplázalo en tu repositorio y haz <code>git add figuras.json && git commit -m "actualizar figuras" && git push</code>.</p>
   </div>
+  <div class="panel">
+    <h2>🔬 Datos Experimentales</h2>
+    <p class="footer-note" style="margin-bottom:14px;">Sección independiente de los histogramas simulados/reales de arriba. Agrega cuantas series necesites — mismo formato de archivo: <b>conteo_acumulado&nbsp;&nbsp;carga(p.e.)</b>.</p>
+    <div class="mode-row">
+      <label class="btn-primary" style="display:inline-block;">
+        ➕ Agregar Serie Experimental
+        <input type="file" accept=".dat,.txt,.csv" style="display:none;" onchange="handleExpFile(event)">
+      </label>
+    </div>
+    <div class="stats-grid" id="expList" style="margin-top:16px;"></div>
+    <div class="chart-wrap" style="margin-top:20px; display:none;" id="expChartWrap">
+      <canvas id="expChart"></canvas>
+    </div>
+    <table id="expTable" style="display:none; margin-top:14px;">
+      <thead>
+        <tr><th>Serie</th><th>N detectado</th><th>Carga máxima (p.e.)</th><th># bins</th></tr>
+      </thead>
+      <tbody id="expTableBody"></tbody>
+    </table>
+    <div class="mode-row" style="margin-top:16px;">
+      <button class="btn-primary" onclick="publicarExperimental()">📤 Publicar Datos Experimentales (descargar experimental.json)</button>
+    </div>
+    <p class="share-note">🌐 Descarga <b>experimental.json</b>, independiente de los otros dos archivos. Reemplázalo en tu repositorio y haz <code>git add experimental.json && git commit -m "actualizar datos experimentales" && git push</code>.</p>
+  </div>
   <p class="sync-msg" id="syncMsg"></p>
   <p class="footer-note">
     💡 Flujo de trabajo sugerido: (1) valida la visualización con los datos simulados de ejemplo,
@@ -340,6 +384,7 @@ let chart = null;
 let dataStore = { det1:null, det2:null, det3:null, total:null };
 let dataSource = { det1:'sim', det2:'sim', det3:'sim', total:'sim' };
 let extraCharts = []; // [{id, name, mime, dataUrl}]
+let expSeries = []; // [{id, name, counts, charge}] — datos experimentales, independientes
 
 function generarHistogramaSintetico(N0, decayFast, decayTail, nBins, chargeStep){
   // Genera un histograma integrado con caída rápida inicial + cola larga (similar a datos reales)
@@ -409,9 +454,22 @@ function publicarFiguras(){
   }
 }
 
+function publicarExperimental(){
+  // Descarga solo experimental.json (series de datos experimentales).
+  if(!checkAuth()) return;
+  const syncEl = document.getElementById('syncMsg');
+  try{
+    descargarJson({expSeries}, 'experimental.json');
+    if(syncEl) syncEl.textContent = '⬇️ experimental.json descargado — muévelo al repo y haz git push para publicarlo';
+  }catch(err){
+    console.error('Error generando experimental.json:', err);
+    if(syncEl) syncEl.textContent = '⚠️ No se pudo generar experimental.json';
+  }
+}
+
 async function loadStoredData(){
-  // Carga data.json y figuras.json de forma independiente: si uno de
-  // los dos no existe todavía, el otro puede seguir cargando bien.
+  // data.json, figuras.json y experimental.json se cargan de forma
+  // independiente: si uno de los tres no existe, los otros igual cargan.
   let foundData = false;
   try{
     const resp = await fetch('./data.json?t=' + Date.now());
@@ -433,6 +491,15 @@ async function loadStoredData(){
     }
   }catch(err){
     console.log('No hay figuras.json publicado aún, o no se pudo leer:', err);
+  }
+  try{
+    const resp = await fetch('./experimental.json?t=' + Date.now());
+    if(resp.ok){
+      const parsed = await resp.json();
+      expSeries = parsed.expSeries || [];
+    }
+  }catch(err){
+    console.log('No hay experimental.json publicado aún, o no se pudo leer:', err);
   }
   return foundData;
 }
@@ -714,11 +781,154 @@ function renderGallery(){
   }).join('');
 }
 
+function handleExpFile(event){
+  if(!checkAuth()){
+    event.target.value = '';
+    return;
+  }
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const parsed = parseDatText(e.target.result);
+      if(parsed.counts.length === 0){
+        alert('No se detectaron datos válidos en el archivo.');
+        return;
+      }
+      expSeries.push({
+        id: 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        name: file.name.replace(/\.[^/.]+$/, ''),
+        counts: parsed.counts,
+        charge: parsed.charge
+      });
+      renderExpAll();
+      const syncEl = document.getElementById('syncMsg');
+      if(syncEl) syncEl.textContent = `Serie "${file.name}" agregada. Presiona "📤 Publicar Datos Experimentales" cuando termines.`;
+    }catch(err){
+      alert('Error al leer el archivo.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function removeExpSeries(id){
+  if(!checkAuth()) return;
+  expSeries = expSeries.filter(s => s.id !== id);
+  renderExpAll();
+  const syncEl = document.getElementById('syncMsg');
+  if(syncEl) syncEl.textContent = 'Serie experimental eliminada. Recuerda presionar "📤 Publicar Datos Experimentales".';
+}
+
+function renameExpSeries(id, newName){
+  const item = expSeries.find(s => s.id === id);
+  if(item) item.name = newName;
+}
+
+const EXP_COLORS = ['#a78bfa','#fb923c','#34d399','#f472b6','#facc15','#38bdf8','#f87171','#818cf8'];
+
+function renderExpList(){
+  const grid = document.getElementById('expList');
+  if(!grid) return;
+  if(expSeries.length === 0){
+    grid.innerHTML = '<p class="footer-note">Aún no hay series experimentales. Usa el botón "➕ Agregar Serie Experimental" arriba.</p>';
+    return;
+  }
+  grid.innerHTML = expSeries.map(s => `
+    <div class="exp-card">
+      <input type="text" value="${s.name}" onchange="renameExpSeries('${s.id}', this.value)">
+      <div class="value">${s.counts[0].toLocaleString()}</div>
+      <div class="sub">eventos · ${s.counts.length} bins · carga máx ${Math.max(...s.charge).toLocaleString()}</div>
+      <button class="gallery-remove" onclick="removeExpSeries('${s.id}')" style="align-self:flex-start;">🗑️ Quitar</button>
+    </div>`).join('');
+}
+
+function renderExpTable(){
+  const table = document.getElementById('expTable');
+  const body = document.getElementById('expTableBody');
+  if(!table || !body) return;
+  if(expSeries.length === 0){
+    table.style.display = 'none';
+    return;
+  }
+  table.style.display = 'table';
+  body.innerHTML = expSeries.map(s => `
+    <tr>
+      <td>${s.name}</td>
+      <td>${s.counts[0].toLocaleString()}</td>
+      <td>${Math.max(...s.charge).toLocaleString()}</td>
+      <td>${s.counts.length}</td>
+    </tr>`).join('');
+}
+
+let expChart = null;
+function renderExpChart(){
+  const wrap = document.getElementById('expChartWrap');
+  if(!wrap) return;
+  if(expSeries.length === 0){
+    wrap.style.display = 'none';
+    if(expChart){ expChart.destroy(); expChart = null; }
+    return;
+  }
+  wrap.style.display = 'block';
+  const ctx = document.getElementById('expChart').getContext('2d');
+  const datasets = expSeries.map((s, i) => ({
+    label: s.name,
+    data: s.charge.map((c, j) => ({x: c, y: s.counts[j]})),
+    borderColor: EXP_COLORS[i % EXP_COLORS.length],
+    backgroundColor: EXP_COLORS[i % EXP_COLORS.length] + '22',
+    borderWidth: 2,
+    pointRadius: 0,
+    stepped: 'before',
+    fill: false,
+    tension: 0
+  }));
+  if(expChart) expChart.destroy();
+  expChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#cbd5e1', font: {size: 12} } },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()} eventos (Q≥${ctx.parsed.x} p.e.)`
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Carga (p.e.)', color: '#94a3b8' },
+          ticks: { color: '#94a3b8' },
+          grid: { color: 'rgba(148,163,184,0.1)' }
+        },
+        y: {
+          type: CHART_SCALE,
+          title: { display: true, text: 'Eventos Integrados', color: '#94a3b8' },
+          ticks: { color: '#94a3b8' },
+          grid: { color: 'rgba(148,163,184,0.1)' }
+        }
+      }
+    }
+  });
+}
+
+function renderExpAll(){
+  renderExpList();
+  renderExpChart();
+  renderExpTable();
+}
+
 function renderAll(){
   renderStats();
   renderTable();
   renderChart();
   renderGallery();
+  renderExpAll();
 }
 
 async function init(){
@@ -726,7 +936,7 @@ async function init(){
   if(found){
     updateBadge();
     renderAll();
-    document.getElementById('syncMsg').textContent = '✓ data.json (y figuras.json si existe) cargados en la vista';
+    document.getElementById('syncMsg').textContent = '✓ data.json (y figuras.json/experimental.json si existen) cargados en la vista';
     // Refleja el estado de las tarjetas de carga si hay datos reales
     ['det1','det2','det3','total'].forEach(k=>{
       const el = document.getElementById('status-'+k);
@@ -737,6 +947,8 @@ async function init(){
     });
   } else {
     aplicarSimulados(); // primer arranque: sin datos guardados, no pide contraseña
+    renderGallery();
+    renderExpAll();
   }
 }
 

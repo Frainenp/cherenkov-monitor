@@ -191,6 +191,20 @@
     <div class="gallery-grid" id="galleryGrid"></div>
   </div>
 
+  <div class="panel" id="expPanel" style="display:none;">
+    <h2>🔬 Datos Experimentales</h2>
+    <div class="stats-grid" id="expList" style="margin-bottom:16px;"></div>
+    <div class="chart-wrap">
+      <canvas id="expChart"></canvas>
+    </div>
+    <table id="expTable" style="margin-top:14px;">
+      <thead>
+        <tr><th>Serie</th><th>N detectado</th><th>Carga máxima (p.e.)</th><th># bins</th></tr>
+      </thead>
+      <tbody id="expTableBody"></tbody>
+    </table>
+  </div>
+
   <div class="panel" id="emptyPanel" style="display:none;">
     <div class="empty-state">
       <div class="big">📭</div>
@@ -207,6 +221,7 @@ let chart = null;
 let dataStore = { det1:null, det2:null, det3:null, total:null };
 let dataSource = { det1:'sim', det2:'sim', det3:'sim', total:'sim' };
 let extraCharts = [];
+let expSeries = [];
 
 async function loadStoredData(){
   // data.json y figuras.json se cargan de forma independiente: si uno
@@ -233,6 +248,15 @@ async function loadStoredData(){
     }
   }catch(err){
     console.log('Aún no hay figuras publicadas:', err);
+  }
+  try{
+    const resp = await fetch('./experimental.json?t=' + Date.now());
+    if(resp.ok){
+      const parsed = await resp.json();
+      expSeries = parsed.expSeries || [];
+    }
+  }catch(err){
+    console.log('Aún no hay datos experimentales publicados:', err);
   }
   return foundData;
 }
@@ -373,11 +397,91 @@ function renderGallery(){
   }).join('');
 }
 
+const EXP_COLORS = ['#a78bfa','#fb923c','#34d399','#f472b6','#facc15','#38bdf8','#f87171','#818cf8'];
+let expChart = null;
+
+function renderExpSection(){
+  const panel = document.getElementById('expPanel');
+  if(!panel) return;
+  if(!expSeries || expSeries.length === 0){
+    panel.style.display = 'none';
+    if(expChart){ expChart.destroy(); expChart = null; }
+    return;
+  }
+  panel.style.display = 'block';
+
+  // Tarjetas resumen
+  const grid = document.getElementById('expList');
+  grid.innerHTML = expSeries.map((s,i) => `
+    <div class="stat-card" style="--accent:${EXP_COLORS[i % EXP_COLORS.length]}">
+      <div class="label">${s.name}</div>
+      <div class="value">${s.counts[0].toLocaleString()}</div>
+      <div class="sub">eventos · ${s.counts.length} bins · carga máx ${Math.max(...s.charge).toLocaleString()}</div>
+    </div>`).join('');
+
+  // Tabla
+  const body = document.getElementById('expTableBody');
+  body.innerHTML = expSeries.map(s => `
+    <tr>
+      <td>${s.name}</td>
+      <td>${s.counts[0].toLocaleString()}</td>
+      <td>${Math.max(...s.charge).toLocaleString()}</td>
+      <td>${s.counts.length}</td>
+    </tr>`).join('');
+
+  // Gráfico
+  const ctx = document.getElementById('expChart').getContext('2d');
+  const datasets = expSeries.map((s, i) => ({
+    label: s.name,
+    data: s.charge.map((c, j) => ({x: c, y: s.counts[j]})),
+    borderColor: EXP_COLORS[i % EXP_COLORS.length],
+    backgroundColor: EXP_COLORS[i % EXP_COLORS.length] + '22',
+    borderWidth: 2,
+    pointRadius: 0,
+    stepped: 'before',
+    fill: false,
+    tension: 0
+  }));
+  if(expChart) expChart.destroy();
+  expChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#cbd5e1', font: {size: 12} } },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()} eventos (Q≥${ctx.parsed.x} p.e.)`
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Carga (p.e.)', color: '#94a3b8' },
+          ticks: { color: '#94a3b8' },
+          grid: { color: 'rgba(148,163,184,0.1)' }
+        },
+        y: {
+          type: CHART_SCALE,
+          title: { display: true, text: 'Eventos Integrados', color: '#94a3b8' },
+          ticks: { color: '#94a3b8' },
+          grid: { color: 'rgba(148,163,184,0.1)' }
+        }
+      }
+    }
+  });
+}
+
 function renderAll(){
   renderStats();
   renderTable();
   renderChart();
   renderGallery();
+  renderExpSection();
 }
 
 function showData(){
@@ -393,7 +497,8 @@ function showEmpty(){
   document.getElementById('chartPanel').style.display = 'none';
   document.getElementById('tablePanel').style.display = 'none';
   document.getElementById('emptyPanel').style.display = 'block';
-  renderGallery(); // la galería se muestra sola si hay figuras.json, aunque no haya data.json
+  renderGallery(); // se muestra sola si hay figuras.json, aunque no haya data.json
+  renderExpSection(); // idem para experimental.json
 }
 
 async function refresh(){
